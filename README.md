@@ -1,2 +1,2 @@
 # BLE_nRF8001_SOC
-BLE_nRF8001_SOC library integrated
+BLE_nRF8001_SOC library integrated with STM32F407VGT6 MCU.
