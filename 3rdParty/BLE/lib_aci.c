@@ -210,7 +210,7 @@ void lib_aci_init(aci_state_t *aci_stat, bool debug)
   
   hal_aci_tl_init(&aci_stat->aci_pins, debug);
   
-  lib_aci_board_init(aci_stat);
+// lib_aci_board_init(aci_stat);
 }
 
 

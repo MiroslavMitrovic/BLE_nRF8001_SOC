@@ -16,6 +16,7 @@
 #define debug(M, ...) fprintf(stderr, "DEBUG %s:%d: " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 #endif
 
+#define __PRINTF_OVER_UART__
 
 #define clean_errno() (errno == 0 ? "None" : strerror(errno))
 

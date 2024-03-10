@@ -19,6 +19,8 @@
  * SOFTWARE.
  */
 
+#include <stdbool.h>
+#include <debug.h>
 #include <lib_aci.h>
 #include "aci_setup.h"
 
@@ -49,6 +51,7 @@ extern hal_aci_data_t msg_to_send;
 /***************************************************************************/
 static bool aci_setup_fill(aci_state_t *aci_stat, uint8_t *num_cmd_offset)
 {
+  int i;
   bool ret_val = false;
   
   while (*num_cmd_offset < aci_stat->aci_setup_info.num_setup_msgs)
@@ -63,8 +66,19 @@ static bool aci_setup_fill(aci_state_t *aci_stat, uint8_t *num_cmd_offset)
 		//Add 2 bytes to the length byte for status byte, length for the total number of bytes
 		memcpy(&msg_to_send, &(aci_stat->aci_setup_info.setup_msgs[*num_cmd_offset]), 
 				  (aci_stat->aci_setup_info.setup_msgs[*num_cmd_offset].buffer[0]+2)); 
+	#elif defined(STM32F407xx)
+//printf("aci_setup_fill stm32f4 memcpy routine\r\n");
+    memcpy(&msg_to_send, &(aci_stat->aci_setup_info.setup_msgs[*num_cmd_offset]), 
+          (aci_stat->aci_setup_info.setup_msgs[*num_cmd_offset].buffer[0]+2)); 
 	#endif
 
+  //  log_info("aci_setup_fill hal_aci_tl_send\r\n");
+   // printf("msg_to_send.status_byte = %02X\r\n", msg_to_send.status_byte);
+
+//    for (i = 0; i < HAL_ACI_MAX_LENGTH; i++) {
+//     //   printf("%02x:", msg_to_send.buffer[i]);
+//    }
+//    printf("\r\n");
     //Put the Setup ACI message in the command queue
     if (!hal_aci_tl_send(&msg_to_send))
     {

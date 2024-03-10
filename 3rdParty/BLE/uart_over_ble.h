@@ -32,7 +32,7 @@
 
 /**
  * @def UART_OVER_BLE_DISCONNECT
- * @brief
+ * @brief 
  * Command to queue a ACI Disconnect to the nRF8001
  */
 #define UART_OVER_BLE_DISCONNECT      (0x01)
@@ -48,7 +48,7 @@
 /**
  * @def UART_OVER_BLE_TRANSMIT_STOP
  * @brief
- * Command to stop sending UART over BLE packets
+ * Command to stop sending UART over BLE packets 
  */
 #define UART_OVER_BLE_TRANSMIT_STOP   (0x03)
 
@@ -56,7 +56,7 @@
 /**
  * @def UART_OVER_BLE_TRANSMIT_OK
  * @brief
- * Command to allow sending UART over BLE packets
+ * Command to allow sending UART over BLE packets 
  */
 #define UART_OVER_BLE_TRANSMIT_OK     (0x04)
 
@@ -64,7 +64,7 @@ typedef struct
 {
     uint8_t uart_rts_local;  /* State of the local UART RTS  */
     uint8_t uart_rts_remote; /* State of the remote UART RTS */
-} uart_over_ble_t;
+} uart_over_ble_t;  
 
 /**
  * @}

@@ -52,7 +52,7 @@ void millis_init(void)
 		- Reload Value is the parameter to be passed for SysTick_Config() function
 		- Reload Value should not exceed 0xFFFFFF
 	*/
-	if (SysTick_Config(SystemCoreClock / 10000))
+	if (SysTick_Config(SystemCoreClock / 1000))
 	{
 		/* Capture error */
 		while (1);

@@ -36,44 +36,59 @@ void delay(uint16_t delay)
     while ((millis() - old_time) < delay) {}
 }
 
-uint8_t digitalRead(uint8_t pin)
+uint8_t digitalRead(uint32_t pin)
 {
     uint8_t value = 0;
 
     if (pin == RDYN_PIN) {
-        if (LL_GPIO_ReadInputPort(RDYN_GPIO_PORT) & pin)
+        if (HAL_GPIO_ReadPin(RDYN_GPIO_PORT, RDYN_PIN))
         {
-            value = 1;
+            value = HIGH;
         }
         else
         {
-            value = 0;
+            value = LOW;
         }
  	  }
 
-    //log_info("digitalRead(%d) = %d\r\n", pin, value);
+  //  log_info("digitalRead(%d) = %d\r\n", pin, value);
     return value;
 }
 
-uint8_t digitalWrite(uint8_t pin, uint8_t value)
+uint8_t digitalWrite(uint16_t pin, uint8_t value)
 {
- 	  // only do for REQN pin
- 	  if ((pin == REQN_PIN) || (pin == RESET_PIN)) {
- 	  	  if (value)
- 	  	  {
- 	  		LL_GPIO_SetOutputPin(REQN_GPIO_PORT, pin);
- 	  	  }
- 	  	  else
- 	  	  {
- 	  		LL_GPIO_SetOutputPin(REQN_GPIO_PORT, pin);
- 	  	  }
- 	  }
+	// only do for REQN pin
+	if (pin == REQN_PIN)  {
+		if (GPIO_PIN_SET == value)
+		{
+			LL_GPIO_SetOutputPin(REQN_GPIO_PORT, pin);
+		}
+		else if(GPIO_PIN_RESET == value)
+		{
+			LL_GPIO_ResetOutputPin(REQN_GPIO_PORT, pin);
+		}
+		else
+		{}
+	}
+	else if (pin == RESET_PIN)  {
+		if (GPIO_PIN_SET == value)
+		{
+			LL_GPIO_SetOutputPin(RESET_GPIO_PORT, pin);
+		}
+		else if(GPIO_PIN_RESET == value)
+		{
+			LL_GPIO_ResetOutputPin(RESET_GPIO_PORT, pin);
+		}
+		else
+		{}
+	}
 
-    //log_info("digitalWrite(%d) = %d\r\n", pin, value);
+
+//    log_info("digitalWrite(%d) = %d\r\n", pin, value);
  	  return 0;
 }
 
-void pinMode(uint8_t pin, uint8_t mode)
+void pinMode(uint16_t pin, uint8_t mode)
 {
  	  GPIO_InitTypeDef gpio_init;
 

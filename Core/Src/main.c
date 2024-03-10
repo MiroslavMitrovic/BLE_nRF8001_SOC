@@ -6,7 +6,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2023 STMicroelectronics.
+  * Copyright (c) 2024 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "usb_host.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -36,7 +37,6 @@
 #include <aci_setup.h>
 #include <uart_over_ble.h>
 #include <io_support.h>
-
 
 /* USER CODE END Includes */
 
@@ -63,16 +63,18 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 I2S_HandleTypeDef hi2s3;
 
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 
-UART_HandleTypeDef huart2;
 
+UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 extern uint8_t Rx_Flag_read;
-
+uint8_t Tx_Data2[13];
 /* Store the setup for the nRF8001 in the flash of the AVR to save on RAM */
 static const hal_aci_data_t setup_msgs[NB_SETUP_MESSAGES] = SETUP_MESSAGES_CONTENT;
 // aci_struct that will contain
@@ -105,23 +107,33 @@ Used to test the UART TX characteristic notification
 static uart_over_ble_t uart_over_ble;
 uint8_t         uart_buffer[RXBUFFERSIZE];
 static uint8_t         uart_buffer_len = 0;
-
-
+static uint8_t         dummychar = 0;
+unsigned char TX_Data[13];
+uint8_t Tx_DataTest[13] = {0};
 bool stringComplete = false;  // whether the string is complete
 uint8_t stringIndex = 0;      //Initialize the index to store incoming chars
+uint16_t g_bytes_available = 0;
+bool g_isRxBufferFull = false;
+uint8_t g_SetupStatus = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
+void MX_USB_HOST_Process(void);
+
 /* USER CODE BEGIN PFP */
 void nrf8001_setup(void);
 void print_setup_messages(void);
 void aci_loop(void);
+void uart_over_ble_init(void);
+bool uart_tx(uint8_t *buffer, uint8_t buffer_len);
+void serialEvent(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -157,13 +169,15 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_I2C1_Init();
   MX_I2S3_Init();
   MX_SPI1_Init();
-  MX_SPI2_Init();
+  MX_USB_HOST_Init();
+  //MX_SPI2_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
-  static uint32_t rx_count = 0;
+  memset(Tx_Data2,0x48,sizeof(Tx_Data2));
+ static uint32_t rx_count = 0;
 
 
   init_usart2(115200); // initialize the USART peripheral
@@ -173,30 +187,42 @@ int main(void)
   log_info("millis_init passed\r\n");
 
   // bring up the GPIO pins and SPI HW interface
-  if (init_spi2(NRF8001_SPI, SPI_BAUDRATEPRESCALER_32) != E_SUCCESS) {
+ if (init_spi2(SPI2, SPI_BAUDRATEPRESCALER_32) != E_SUCCESS) {
       log_err("GPIO and SPI HW bringup failed");
       return -1;
-  }
-
+ }
   log_info("init_spi1 passed\r\n");
 
   nrf8001_setup();
   log_info("nrf8001_setup passed\r\n");
 
+  memcpy(&TX_Data,"Hello World!",13);
+  if(TX_Data)
+  {
+  memset(&Tx_DataTest[0],0x48,sizeof(Tx_DataTest));
+  }
+
+ // HAL_UART_Receive_IT(huart, pData, Size)
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //printf("millis_now = %d, millis_old = %d\r\n", millis(), lastUpdate);
+	//  serialEvent();
+	//  HAL_GPIO_WritePin(SPI2_CS_GPIO_Port,SPI2_CS_Pin,GPIO_PIN_RESET);
+	//  HAL_SPI_Transmit(&hspi2, TX_Data, sizeof(TX_Data),100);
+	//  HAL_Delay(1000);
+	//  HAL_GPIO_WritePin(SPI2_CS_GPIO_Port,SPI2_CS_Pin,GPIO_PIN_SET);
+	  HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+
+//  printf("millis_now = %d\r\n", millis() );
 	  if (Rx_Flag_read) {
 		  printf("Rx_Flag_read is high\r\n");
 		  rx_count++;
 
 		  stringComplete = true;
 		  Rx_Flag_read = 0;
-
 		  printf("Sending: %s\r\n", (char *)&uart_buffer[0]);
 
 		  uart_buffer_len = stringIndex + 1;
@@ -219,17 +245,103 @@ int main(void)
 	  }
 
 	  aci_loop();
-	  /* USER CODE END WHILE */
+//	  // print the string when a newline arrives:
+//	    if (stringComplete)
+//	    {
+//	      printf(("Sending: "));
+//	      printf((char *)&uart_buffer[0]);
+//
+//	      uart_buffer_len = stringIndex + 1;
+//
+//	      if (!lib_aci_send_data(PIPE_UART_OVER_BTLE_UART_TX_TX, uart_buffer, uart_buffer_len))
+//	      {
+//	    	  printf(("Serial input dropped"));
+//	      }
+//
+//	      // clear the uart_buffer:
+//	      for (stringIndex = 0; stringIndex < 20; stringIndex++)
+//	      {
+//	        uart_buffer[stringIndex] = ' ';
+//	      }
+//
+//	      // reset the flag and the index in order to receive more data
+//	      stringIndex    = 0;
+//	      stringComplete = false;
+//	    }
+//
+//	    //For ChipKit you have to call the function that reads from Serial
+//	    #if defined (__PIC32MX__)
+//	      if (Serial.available())
+//	      {
+//	        serialEvent();
+//	      }
+//	    #endif
+//	  }
+
+//	  // Ask what is our current status
+//	    aci_evt_opcode_t status = BTLEserial.getState();
+//	    // If the status changed....
+//	    if (status != laststatus) {
+//	      // print it out!
+//	      if (status == ACI_EVT_DEVICE_STARTED) {
+//	          Serial.println(F("* Advertising started"));
+//	      }
+//	      if (status == ACI_EVT_CONNECTED) {
+//	          Serial.println(F("* Connected!"));
+//	      }
+//	      if (status == ACI_EVT_DISCONNECTED) {
+//	          Serial.println(F("* Disconnected or advertising timed out"));
+//	      }
+//	      // OK set the last status change to this one
+//	      laststatus = status;
+//	    }
+//
+//	    if (status == ACI_EVT_CONNECTED) {
+//	      // Lets see if there's any data for us!
+//	      if (BTLEserial.available()) {
+//	        Serial.print("* "); Serial.print(BTLEserial.available()); Serial.println(F(" bytes available from BTLE"));
+//	      }
+//	      // OK while we still have something to read, get a character and print it out
+//	      while (BTLEserial.available()) {
+//	        char c = BTLEserial.read();
+//	        Serial.print(c);
+//	      }
+//
+//	      // Next up, see if we have any data to get from the Serial console
+//
+//	      if (Serial.available()) {
+//	        // Read a line from Serial
+//	        Serial.setTimeout(100); // 100 millisecond timeout
+//	        String s = Serial.readString();
+//
+//	        // We need to convert the line to bytes, no more than 20 at this time
+//	        uint8_t sendbuffer[20];
+//	        s.getBytes(sendbuffer, 20);
+//	        char sendbuffersize = min(20, s.length());
+//
+//	        Serial.print(F("\n* Sending -> \"")); Serial.print((char *)sendbuffer); Serial.println("\"");
+//
+//	        // write the data
+//	        BTLEserial.write(sendbuffer, sendbuffersize);
+//	      }
+//	    }
+
+
+//	  HAL_Delay(100);
+    /* USER CODE END WHILE */
+   // MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
-  }
+//  }
   /* USER CODE END 3 */
-}
+//}
 
 /**
   * @brief System Clock Configuration
   * @retval None
   */
+  }
+}
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -269,6 +381,40 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -366,8 +512,8 @@ static void MX_SPI2_Init(void)
   hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
-  hspi2.Init.FirstBit = SPI_FIRSTBIT_LSB;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi2.Init.CRCPolynomial = 10;
@@ -438,11 +584,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(OTG_FS_PowerSwitchOn_GPIO_Port, OTG_FS_PowerSwitchOn_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, REQN_PIN_Pin|SPI2_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, RESET_PIN_Pin|LD4_Pin|LD3_Pin|LD5_Pin
-                          |LD6_Pin|Audio_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, LD4_Pin|LD3_Pin|LD5_Pin|LD6_Pin
+                          |Audio_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : CS_I2C_SPI_Pin */
   GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -458,6 +604,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(OTG_FS_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PDM_OUT_Pin */
+  GPIO_InitStruct.Pin = PDM_OUT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
+  HAL_GPIO_Init(PDM_OUT_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
@@ -470,23 +624,25 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(BOOT1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : RDYN_PIN_Pin */
-  GPIO_InitStruct.Pin = RDYN_PIN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(RDYN_PIN_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : REQN_PIN_Pin SPI2_CS_Pin */
-  GPIO_InitStruct.Pin = REQN_PIN_Pin|SPI2_CS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  /*Configure GPIO pin : CLK_IN_Pin */
+  GPIO_InitStruct.Pin = CLK_IN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
+  HAL_GPIO_Init(CLK_IN_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : RESET_PIN_Pin LD4_Pin LD3_Pin LD5_Pin
-                           LD6_Pin Audio_RST_Pin */
-  GPIO_InitStruct.Pin = RESET_PIN_Pin|LD4_Pin|LD3_Pin|LD5_Pin
-                          |LD6_Pin|Audio_RST_Pin;
+//  /*Configure GPIO pin : SPI2_CS_Pin */
+//  GPIO_InitStruct.Pin = SPI2_CS_Pin;
+//  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+//  GPIO_InitStruct.Pull = GPIO_PULLUP;
+//  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+//  HAL_GPIO_Init(SPI2_CS_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LD4_Pin LD3_Pin LD5_Pin LD6_Pin
+                           Audio_RST_Pin */
+  GPIO_InitStruct.Pin = LD4_Pin|LD3_Pin|LD5_Pin|LD6_Pin
+                          |Audio_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -507,6 +663,56 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	/* Callback called buffer is full, set the cleanup flag so that Rx Buffer could be cleared after usage
+	 and put a warning that the output will be truncated */
+	//g_isRxBufferFull = true;
+	 __HAL_UART_ENABLE_IT(&huart2, UART_IT_RXNE);
+	// Start another reception
+	//HAL_UART_Receive_IT(huart, uart_buffer, RXBUFFERSIZE);
+
+
+}
+
+
+void serialEvent(void) {
+
+
+
+			if(!stringComplete)
+			{
+				if (dummychar == '\n')
+				{
+					// if the incoming character is a newline, set a flag
+					// so the main loop can do something about it
+					stringIndex--;
+					stringComplete = true;
+				}
+				else
+				{
+					if(stringIndex > 19)
+					{
+						printf("Serial input truncated");
+						stringIndex--;
+						stringComplete = true;
+					}
+					else
+					{
+						// add it to the uart_buffer
+						uart_buffer[stringIndex] = dummychar;
+						stringIndex++;
+					}
+				}
+			}
+
+
+}
+
+void uart_over_ble_init(void)
+{
+    uart_over_ble.uart_rts_local = true;
+}
 void nrf8001_setup(void)
 {
   /**
@@ -535,7 +741,7 @@ void nrf8001_setup(void)
   aci_state.aci_pins.miso_pin   = MISO_PIN;
   aci_state.aci_pins.sck_pin    = SCLK_PIN;
 
-  //aci_state.aci_pins.spi_clock_divider      = SPI_CLOCK_DIV8;//SPI_CLOCK_DIV8  = 2MHz SPI speed
+//  aci_state.aci_pins.spi_clock_divider      = SPI_CLOCK_DIV8;//SPI_CLOCK_DIV8  = 2MHz SPI speed
                                                              //SPI_CLOCK_DIV16 = 1MHz SPI speed
 
   aci_state.aci_pins.reset_pin              = RESET_PIN; //4 for Nordic board, UNUSED for REDBEARLAB_SHIELD_V1_1
@@ -549,13 +755,10 @@ void nrf8001_setup(void)
   //If the RESET line is not available we call the ACI Radio Reset to soft reset the nRF8001
   //then we initialize the data structures required to setup the nRF8001
   //The second parameter is for turning debug printing on for the ACI Commands and Events so they be printed on the Serial
-  lib_aci_init(&aci_state, false);
+  lib_aci_init(&aci_state, true);
 }
 
-void uart_over_ble_init(void)
-{
-  uart_over_ble.uart_rts_local = true;
-}
+
 
 bool uart_tx(uint8_t *buffer, uint8_t buffer_len)
 {
@@ -574,12 +777,13 @@ bool uart_tx(uint8_t *buffer, uint8_t buffer_len)
   return status;
 }
 
+
 bool uart_process_control_point_rx(uint8_t *byte, uint8_t length)
 {
   bool status = false;
   aci_ll_conn_params_t *conn_params;
 
-  if (lib_aci_is_pipe_available(&aci_state, PIPE_UART_OVER_BTLE_UART_CONTROL_POINT_TX) )
+  if (lib_aci_is_pipe_available(&aci_state, PIPE_UART_OVER_BTLE_UART_TX_TX) )
   {
     printf("%02X\r\n", *byte);
 
@@ -653,201 +857,199 @@ bool uart_process_control_point_rx(uint8_t *byte, uint8_t length)
 
 void aci_loop(void)
 {
-  static bool setup_required = false;
 
-  // We enter the if statement only when there is a ACI event available to be processed
-  if (lib_aci_event_get(&aci_state, &aci_data))
-  {
-    aci_evt_t * aci_evt;
-    aci_evt = &aci_data.evt;
-    switch(aci_evt->evt_opcode)
-    {
-      /**
-      As soon as you reset the nRF8001 you will get an ACI Device Started Event
-      */
-      case ACI_EVT_DEVICE_STARTED:
-      {
-        aci_state.data_credit_total = aci_evt->params.device_started.credit_available;
-        switch(aci_evt->params.device_started.device_mode)
-        {
-          case ACI_DEVICE_SETUP:
-            /**
-            When the device is in the setup mode
-            */
-            printf("Evt Device Started: Setup");
-            setup_required = true;
-            break;
+  static bool setup_required = true;
 
-          case ACI_DEVICE_STANDBY:
-            printf("Evt Device Started: Standby");
-            //Looking for an iPhone by sending radio advertisements
-            //When an iPhone connects to us we will get an ACI_EVT_CONNECTED event from the nRF8001
-            if (aci_evt->params.device_started.hw_error)
-            {
-              delay(20); //Handle the HW error event correctly.
-            }
-            else
-            {
-              lib_aci_connect(0/* in seconds : 0 means forever */, 0x0050 /* advertising interval 50ms*/);
-              printf("Advertising started : Tap Connect on the nRF UART app");
-            }
 
-            break;
-          default :
-        	  break;
-        }
-      }
-      break; //ACI Device Started Event
+   // We enter the if statement only when there is a ACI event available to be processed
+   if (lib_aci_event_get(&aci_state, &aci_data))
+   {
+     aci_evt_t * aci_evt;
+     aci_evt = &aci_data.evt;
 
-      case ACI_EVT_CMD_RSP:
-        //If an ACI command response event comes with an error -> stop
-        if (ACI_STATUS_SUCCESS != aci_evt->params.cmd_rsp.cmd_status)
-        {
-          //ACI ReadDynamicData and ACI WriteDynamicData will have status codes of
-          //TRANSACTION_CONTINUE and TRANSACTION_COMPLETE
-          //all other ACI commands will have status code of ACI_STATUS_SCUCCESS for a successful command
-          printf("ACI Command %02X\r\n", aci_evt->params.cmd_rsp.cmd_opcode);
-          printf("Evt Cmd respone: Status %02X\r\n", aci_evt->params.cmd_rsp.cmd_status);
-        }
-        if (ACI_CMD_GET_DEVICE_VERSION == aci_evt->params.cmd_rsp.cmd_opcode)
-        {
-          //Store the version and configuration information of the nRF8001 in the Hardware Revision String Characteristic
-          lib_aci_set_local_data(&aci_state, PIPE_DEVICE_INFORMATION_HARDWARE_REVISION_STRING_SET,
-            (uint8_t *)&(aci_evt->params.cmd_rsp.params.get_device_version), sizeof(aci_evt_cmd_rsp_params_get_device_version_t));
-        }
-        break;
+     switch(aci_evt->evt_opcode)
+     {
+       /**
+       As soon as you reset the nRF8001 you will get an ACI Device Started Event
+       */
+       case ACI_EVT_DEVICE_STARTED:
+       {
+         aci_state.data_credit_total = aci_evt->params.device_started.credit_available;
+         switch(aci_evt->params.device_started.device_mode)
+         {
+           case ACI_DEVICE_SETUP:
+             /**
+             When the device is in the setup mode
+             */
+             printf("Evt Device Started: Setup");
+             setup_required = true;
+             break;
 
-      case ACI_EVT_CONNECTED:
-        printf("Evt Connected");
-        uart_over_ble_init();
-        timing_change_done              = false;
-        aci_state.data_credit_available = aci_state.data_credit_total;
+           case ACI_DEVICE_STANDBY:
+             printf("Evt Device Started: Standby");
+             //Looking for an iPhone by sending radio advertisements
+             //When an iPhone connects to us we will get an ACI_EVT_CONNECTED event from the nRF8001
+             if (aci_evt->params.device_started.hw_error)
+             {
+               delay(20); //Magic number used to make sure the HW error event is handled correctly.
+             }
+             else
+             {
+             lib_aci_connect(180/* in seconds */, 0x0050 /* advertising interval 50ms*/);
+             printf("Advertising started");
+             }
+             break;
+         }
+       }
+         break; //ACI Device Started Event
 
-        /*
-        Get the device version of the nRF8001 and store it in the Hardware Revision String
-        */
-        lib_aci_device_version();
-        break;
+       case ACI_EVT_CMD_RSP:
+         //If an ACI command response event comes with an error -> stop
+         if (ACI_STATUS_SUCCESS != aci_evt->params.cmd_rsp.cmd_status)
+         {
+           //ACI ReadDynamicData and ACI WriteDynamicData will have status codes of
+           //TRANSACTION_CONTINUE and TRANSACTION_COMPLETE
+           //all other ACI commands will have status code of ACI_STATUS_SCUCCESS for a successful command
+        	 printf(("ACI Command "));
+        	 printf("%x ",aci_evt->params.cmd_rsp.cmd_opcode);
+        	 printf(("Evt Cmd respone: Status "));
+        	 printf("%x ",aci_evt->params.cmd_rsp.cmd_status);
+         }
+         if (ACI_CMD_GET_DEVICE_VERSION == aci_evt->params.cmd_rsp.cmd_opcode)
+         {
+           //Store the version and configuration information of the nRF8001 in the Hardware Revision String Characteristic
+           lib_aci_set_local_data(&aci_state, PIPE_DEVICE_INFORMATION_HARDWARE_REVISION_STRING_SET,
+             (uint8_t *)&(aci_evt->params.cmd_rsp.params.get_device_version), sizeof(aci_evt_cmd_rsp_params_get_device_version_t));
+         }
+         break;
 
-      case ACI_EVT_PIPE_STATUS:
-        printf("Evt Pipe Status");
-        if (lib_aci_is_pipe_available(&aci_state, PIPE_UART_OVER_BTLE_UART_TX_TX) && (false == timing_change_done))
-        {
-          lib_aci_change_timing_GAP_PPCP(); // change the timing on the link as specified in the nRFgo studio -> nRF8001 conf. -> GAP.
-                                            // Used to increase or decrease bandwidth
-          timing_change_done = true;
+       case ACI_EVT_CONNECTED:
+    	   printf(("Evt Connected"));
+         uart_over_ble_init();
+         timing_change_done              = false;
+         aci_state.data_credit_available = aci_state.data_credit_total;
 
-          char hello[]="Hello World, works";
-          uart_tx((uint8_t *)&hello[0], strlen(hello));
-          printf("Sending : %s", hello);
-        }
-        break;
+         /*
+         Get the device version of the nRF8001 and store it in the Hardware Revision String
+         */
+         lib_aci_device_version();
+         break;
 
-      case ACI_EVT_TIMING:
-        printf("Evt link connection interval changed");
-        lib_aci_set_local_data(&aci_state,
-                                PIPE_UART_OVER_BTLE_UART_LINK_TIMING_CURRENT_SET,
-                                (uint8_t *)&(aci_evt->params.timing.conn_rf_interval), /* Byte aligned */
-                                PIPE_UART_OVER_BTLE_UART_LINK_TIMING_CURRENT_SET_MAX_SIZE);
-        break;
+       case ACI_EVT_PIPE_STATUS:
+    	   printf(("Evt Pipe Status"));
+         if (lib_aci_is_pipe_available(&aci_state, PIPE_UART_OVER_BTLE_UART_TX_TX) && (false == timing_change_done))
+         {
+           lib_aci_change_timing_GAP_PPCP(); // change the timing on the link as specified in the nRFgo studio -> nRF8001 conf. -> GAP.
+                                             // Used to increase or decrease bandwidth
+           timing_change_done = true;
+         }
+         break;
 
-      case ACI_EVT_DISCONNECTED:
-        printf("Evt Disconnected/Advertising timed out");
-        lib_aci_connect(0/* in seconds  : 0 means forever */, 0x0050 /* advertising interval 50ms*/);
-        printf("Advertising started. Tap Connect on the nRF UART app");
-        break;
+       case ACI_EVT_TIMING:
+    	   printf(("Evt link connection interval changed"));
+         lib_aci_set_local_data(&aci_state,
+                                 PIPE_UART_OVER_BTLE_UART_LINK_TIMING_CURRENT_SET,
+                                 (uint8_t *)&(aci_evt->params.timing.conn_rf_interval), /* Byte aligned */
+                                 PIPE_UART_OVER_BTLE_UART_LINK_TIMING_CURRENT_SET_MAX_SIZE);
+         break;
 
-      case ACI_EVT_DATA_RECEIVED:
-        printf("Pipe Number: ");
-        printf("%d\r\n", aci_evt->params.data_received.rx_data.pipe_number);
+       case ACI_EVT_DISCONNECTED:
+    	   printf(("Evt Disconnected/Advertising timed out"));
+         lib_aci_connect(180/* in seconds */, 0x0100 /* advertising interval 100ms*/);
+         printf(("Advertising started"));
+         break;
 
-        if (PIPE_UART_OVER_BTLE_UART_RX_RX == aci_evt->params.data_received.rx_data.pipe_number)
-          {
+       case ACI_EVT_DATA_RECEIVED:
+    	   printf(("Pipe Number: "));
+    	   printf("%d\n",aci_evt->params.data_received.rx_data.pipe_number);
+         if (PIPE_UART_OVER_BTLE_UART_RX_RX == aci_evt->params.data_received.rx_data.pipe_number)
+         {
+        	 printf((" Data(Hex) : "));
+           for(int i=0; i<aci_evt->len - 2; i++)
+           {
+        	 printf((char)aci_evt->params.data_received.rx_data.aci_data[i]);
+             uart_buffer[i] = aci_evt->params.data_received.rx_data.aci_data[i];
+             printf((" "));
+           }
 
-            printf(" Data(Hex) : ");
-            for(int i=0; i<aci_evt->len - 2; i++)
-            {
-              printf("%c", (char)aci_evt->params.data_received.rx_data.aci_data[i]);
-              uart_buffer[i] = aci_evt->params.data_received.rx_data.aci_data[i];
-              printf(" ");
-            }
-            uart_buffer_len = aci_evt->len - 2;
-            printf("\r\n");
-            if (lib_aci_is_pipe_available(&aci_state, PIPE_UART_OVER_BTLE_UART_TX_TX))
-            {
-              /*Do this to test the loopback otherwise comment it out*/
-              /*
-              if (!uart_tx(&uart_buffer[0], aci_evt->len - 2))
-              {
-                Serial.println(F("UART loopback failed"));
-              }
-              else
-              {
-                Serial.println(F("UART loopback OK"));
-              }
-              */
-            }
-        }
-        if (PIPE_UART_OVER_BTLE_UART_CONTROL_POINT_RX == aci_evt->params.data_received.rx_data.pipe_number)
-        {
-          uart_process_control_point_rx(&aci_evt->params.data_received.rx_data.aci_data[0], aci_evt->len - 2); //Subtract for Opcode and Pipe number
-        }
-        break;
+           uart_buffer_len = aci_evt->len - 2;
+           printf((""));
+           if (lib_aci_is_pipe_available(&aci_state, PIPE_UART_OVER_BTLE_UART_TX_TX))
+           {
+             /*Do this to test the loopback otherwise comment it out
+             */
+             /*
+             if (!uart_tx(&uart_buffer[0], aci_evt->len - 2))
+             {
+               Serial.println(F("UART loopback failed"));
+             }
+             else
+             {
+               Serial.println(F("UART loopback OK"));
+             }
+             */
+           }
+         }
+         if (PIPE_UART_OVER_BTLE_UART_CONTROL_POINT_RX == aci_evt->params.data_received.rx_data.pipe_number)
+         {
+             uart_process_control_point_rx(&aci_evt->params.data_received.rx_data.aci_data[0], aci_evt->len - 2); //Subtract for Opcode and Pipe number
+         }
+         break;
 
-      case ACI_EVT_DATA_CREDIT:
-        aci_state.data_credit_available = aci_state.data_credit_available + aci_evt->params.data_credit.credit;
-        break;
+       case ACI_EVT_DATA_CREDIT:
+         aci_state.data_credit_available = aci_state.data_credit_available + aci_evt->params.data_credit.credit;
+         break;
 
-      case ACI_EVT_PIPE_ERROR:
-        //See the appendix in the nRF8001 Product Specication for details on the error codes
+       case ACI_EVT_PIPE_ERROR:
+         //See the appendix in the nRF8001 Product Specication for details on the error codes
+    	   printf(("ACI Evt Pipe Error: Pipe #:"));
+    	   printf("%d\n",aci_evt->params.pipe_error.pipe_number);
+    	   printf(("  Pipe Error Code: "));
+    	   printf("%x\n",aci_evt->params.pipe_error.error_code);
 
-        printf("ACI Evt Pipe Error: Pipe #: %d", aci_evt->params.pipe_error.pipe_number);
-        printf("Pipe Error Code: 0x%02X", aci_evt->params.pipe_error.error_code);
+         //Increment the credit available as the data packet was not sent.
+         //The pipe error also represents the Attribute protocol Error Response sent from the peer and that should not be counted
+         //for the credit.
+         if (ACI_STATUS_ERROR_PEER_ATT_ERROR != aci_evt->params.pipe_error.error_code)
+         {
+           aci_state.data_credit_available++;
+         }
+         break;
 
-        //Increment the credit available as the data packet was not sent.
-        //The pipe error also represents the Attribute protocol Error Response sent from the peer and that should not be counted
-        //for the credit.
-        if (ACI_STATUS_ERROR_PEER_ATT_ERROR != aci_evt->params.pipe_error.error_code)
-        {
-          aci_state.data_credit_available++;
-        }
-        break;
+       case ACI_EVT_HW_ERROR:
+    	   printf(("HW error: "));
+    	   printf("%d\n",aci_evt->params.hw_error.line_num);
 
-      case ACI_EVT_HW_ERROR:
-        printf("HW error: %d\r\n", aci_evt->params.hw_error.line_num);
+         for(uint8_t counter = 0; counter <= (aci_evt->len - 3); counter++)
+         {
+        	 printf("%d ",aci_evt->params.hw_error.file_name[counter]); //uint8_t file_name[20];
+         }
+         printf("\n");
+         lib_aci_connect(180/* in seconds */, 0x0050 /* advertising interval 50ms*/);
+         printf(("Advertising started"));
+         break;
 
-        for(uint8_t counter = 0; counter <= (aci_evt->len - 3); counter++)
-        {
-          printf("%c", (aci_evt->params.hw_error.file_name[counter]));
-        }
+     }
+   }
+   else
+   {
+     //Serial.println(F("No ACI Events available"));
+     // No event in the ACI Event queue and if there is no event in the ACI command queue the arduino can go to sleep
+     // Arduino can go to sleep now
+     // Wakeup from sleep from the RDYN line
+   }
 
-        printf("\r\n");
-        lib_aci_connect(0, 0x0050);
-        printf("Advertising started. Tap Connect on the nRF UART app");
-        break;
-
-      default :
-    	  break;
-    }
-  }
-  else
-  {
-    // No event in the ACI Event queue and if there is no event in the ACI command queue the arduino can go to sleep
-    // Arduino can go to sleep now
-    // Wakeup from sleep from the RDYN line
-  }
-
-  /* setup_required is set to true when the device starts up and enters setup mode.
-   * It indicates that do_aci_setup() should be called. The flag should be cleared if
-   * do_aci_setup() returns ACI_STATUS_TRANSACTION_COMPLETE.
-   */
-  if(setup_required)
-  {
-    if (SETUP_SUCCESS == do_aci_setup(&aci_state))
-    {
-      setup_required = false;
-    }
-  }
+   /* setup_required is set to true when the device starts up and enters setup mode.
+    * It indicates that do_aci_setup() should be called. The flag should be cleared if
+    * do_aci_setup() returns ACI_STATUS_TRANSACTION_COMPLETE.
+    */
+   if(setup_required)
+   {
+     if (SETUP_SUCCESS == (g_SetupStatus = do_aci_setup(&aci_state) ) )
+     {
+       setup_required = false;
+     }
+   }
 }
 
 void print_setup_messages(void)
@@ -863,6 +1065,10 @@ void print_setup_messages(void)
         printf("\r\n");
     }
 }
+
+
+
+
 /* USER CODE END 4 */
 
 /**

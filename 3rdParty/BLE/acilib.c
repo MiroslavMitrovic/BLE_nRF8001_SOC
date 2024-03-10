@@ -218,6 +218,10 @@ void acil_encode_cmd_change_timing_req_GAP_PPCP(uint8_t *buffer)
 
 void acil_encode_cmd_setup(uint8_t *buffer, aci_cmd_params_setup_t *p_aci_cmd_params_setup, uint8_t setup_data_size)
 {
+ printf("acil_encode_cmd_setup size = %d\r\n", setup_data_size + MSG_SETUP_CMD_BASE_LEN);
+  printf("acil_encode_cmd_setup opcode code = %x\r\n", ACI_CMD_SETUP);
+  printf("setup_data_size = %d\r\n", setup_data_size);
+
   *(buffer + OFFSET_ACI_CMD_T_LEN) = setup_data_size + MSG_SETUP_CMD_BASE_LEN;
   *(buffer + OFFSET_ACI_CMD_T_CMD_OPCODE) = ACI_CMD_SETUP;
   memcpy((buffer + OFFSET_ACI_CMD_T_SETUP), &(p_aci_cmd_params_setup->setup_data[0]), setup_data_size);
@@ -300,6 +304,8 @@ void acil_encode_cmd_set_key(uint8_t *buffer, aci_cmd_params_set_key_t *p_aci_cm
 bool acil_encode_cmd(uint8_t *buffer, aci_cmd_t *p_aci_cmd)
 {
   bool ret_val = false;
+
+ printf("acil_encode_cmd called\r\n");
 
   switch(p_aci_cmd->cmd_opcode)
   {
@@ -438,9 +444,9 @@ void acil_decode_evt_command_response(uint8_t *buffer_in, aci_evt_params_cmd_rsp
       p_dtm_evt->evt_msb = (uint8_t)*(buffer_in + OFFSET_ACI_EVT_T_CMD_RSP + OFFSET_ACI_EVT_PARAMS_CMD_RSP_T_DTM_CMD + OFFSET_ACI_EVT_CMD_RSP_PARAMS_DTM_CMD_T_EVT_MSB);
       p_dtm_evt->evt_lsb = (uint8_t)*(buffer_in + OFFSET_ACI_EVT_T_CMD_RSP + OFFSET_ACI_EVT_PARAMS_CMD_RSP_T_DTM_CMD + OFFSET_ACI_EVT_CMD_RSP_PARAMS_DTM_CMD_T_EVT_LSB);
       break;
-    default :
-      break;
 
+    default :
+    	break;
   }
 }
 

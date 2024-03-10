@@ -33,6 +33,10 @@ void init_usart2(uint32_t baudrate) {
     	Error_Handler();
     }
 
+    /* Enable the UART Data Register not empty Interrupt */
+    __HAL_UART_ENABLE_IT(&huart2, UART_IT_RXNE);
+    __HAL_UART_ENABLE(&huart2);
+
 }
 /*sends data byte by byte */
 void puts_usart(USART_TypeDef* USARTx, volatile char *s) {

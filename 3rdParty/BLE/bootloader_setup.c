@@ -166,3 +166,4 @@ bool bootloader_data_store (aci_state_t *state, uint16_t conn_timeout,
   }
 }
 #endif
+#endif

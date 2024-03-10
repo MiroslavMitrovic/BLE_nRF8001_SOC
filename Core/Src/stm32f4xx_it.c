@@ -6,7 +6,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2023 STMicroelectronics.
+  * Copyright (c) 2024 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -20,7 +20,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f4xx_it.h"
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "millis.h"
@@ -45,7 +44,8 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 extern volatile uint32_t _millisCounter;
-uint8_t Rx_Flag_read = 0;
+__attribute__((section(".dataRam"))) uint8_t Rx_Flag_read = 0;
+__IO uint8_t Rx_Flag_read2 = 0;
 #define RXBUFFERSIZE   20
 extern uint8_t uart_buffer[];
 //uint8_t NbrOfDataToTransfer = TXBUFFERSIZE;
@@ -65,6 +65,7 @@ __IO uint32_t RxCounter = 0;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern HCD_HandleTypeDef hhcd_USB_OTG_FS;
 extern UART_HandleTypeDef huart2;
 /* USER CODE BEGIN EV */
 
@@ -195,8 +196,7 @@ void SysTick_Handler(void)
   /* USER CODE BEGIN SysTick_IRQn 0 */
 	_millisCounter++;
   /* USER CODE END SysTick_IRQn 0 */
-
-	HAL_IncTick();
+  HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
 
   /* USER CODE END SysTick_IRQn 1 */
@@ -214,20 +214,38 @@ void SysTick_Handler(void)
   */
 void USART2_IRQHandler(void)
 {
-  /* USER CODE BEGIN USART2_IRQn 0 */
-	if(LL_USART_IsActiveFlag_RXNE(USART2) != RESET) {
-		/* Read one byte from the receive data register */
-		uart_buffer[RxCounter++ % RXBUFFERSIZE] = LL_USART_ReceiveData8(USART2);
 
-		if ((RxCounter % RXBUFFERSIZE) == 0) {
-			Rx_Flag_read = 1;
-		}
-	}
+
+
+  /* USER CODE BEGIN USART2_IRQn 0 */
+	 if(LL_USART_IsActiveFlag_RXNE((USART_TypeDef*)huart2.Instance) != RESET) {
+	    /* Read one byte from the receive data register */
+	    uart_buffer[RxCounter++ % RXBUFFERSIZE] = LL_USART_ReceiveData8((USART_TypeDef*)huart2.Instance);
+
+	    if ((RxCounter % RXBUFFERSIZE) == 0) {
+	      Rx_Flag_read = 1;
+	    }
+	 }
+	//  __HAL_UART_ENABLE_IT(&huart2, UART_IT_RXNE);
   /* USER CODE END USART2_IRQn 0 */
   HAL_UART_IRQHandler(&huart2);
   /* USER CODE BEGIN USART2_IRQn 1 */
 
   /* USER CODE END USART2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles USB On The Go FS global interrupt.
+  */
+void OTG_FS_IRQHandler(void)
+{
+  /* USER CODE BEGIN OTG_FS_IRQn 0 */
+
+  /* USER CODE END OTG_FS_IRQn 0 */
+  HAL_HCD_IRQHandler(&hhcd_USB_OTG_FS);
+  /* USER CODE BEGIN OTG_FS_IRQn 1 */
+
+  /* USER CODE END OTG_FS_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

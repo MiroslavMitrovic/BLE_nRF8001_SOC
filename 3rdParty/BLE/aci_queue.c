@@ -23,6 +23,8 @@
 @brief Implementation of a circular queue for ACI data
 */
 
+#include <stdbool.h>
+#include <debug.h>
 #include "hal_aci_tl.h"
 #include "aci_queue.h"
 #include "ble_assert.h"
@@ -58,6 +60,7 @@ bool aci_queue_dequeue(aci_queue_t *aci_q, hal_aci_data_t *p_data)
   return true;
 }
 
+/*
 bool aci_queue_dequeue_from_isr(aci_queue_t *aci_q, hal_aci_data_t *p_data)
 {
   ble_assert(NULL != aci_q);
@@ -73,13 +76,25 @@ bool aci_queue_dequeue_from_isr(aci_queue_t *aci_q, hal_aci_data_t *p_data)
 
   return true;
 }
+*/
 
 bool aci_queue_enqueue(aci_queue_t *aci_q, hal_aci_data_t *p_data)
 {
   const uint8_t length = p_data->buffer[0];
+  int i;
 
   ble_assert(NULL != aci_q);
   ble_assert(NULL != p_data);
+
+  /*
+  log_info("aci_queue_enqueue\r\n");
+  log_info("length = p_data->buffer[0] = ");
+
+  for (i = 1; i < (length + 1); i++) {
+      printf("%02x:", p_data->buffer[i]);
+  }
+  printf("\r\n");
+  */
 
   if (aci_queue_is_full(aci_q))
   {
@@ -93,6 +108,7 @@ bool aci_queue_enqueue(aci_queue_t *aci_q, hal_aci_data_t *p_data)
   return true;
 }
 
+/*
 bool aci_queue_enqueue_from_isr(aci_queue_t *aci_q, hal_aci_data_t *p_data)
 {
   const uint8_t length = p_data->buffer[0];
@@ -111,6 +127,7 @@ bool aci_queue_enqueue_from_isr(aci_queue_t *aci_q, hal_aci_data_t *p_data)
 
   return true;
 }
+*/
 
 bool aci_queue_is_empty(aci_queue_t *aci_q)
 {
@@ -129,12 +146,14 @@ bool aci_queue_is_empty(aci_queue_t *aci_q)
   return state;
 }
 
+/*
 bool aci_queue_is_empty_from_isr(aci_queue_t *aci_q)
 {
   ble_assert(NULL != aci_q);
 
   return aci_q->head == aci_q->tail;
 }
+*/
 
 bool aci_queue_is_full(aci_queue_t *aci_q)
 {
@@ -153,12 +172,14 @@ bool aci_queue_is_full(aci_queue_t *aci_q)
   return state;
 }
 
+/*
 bool aci_queue_is_full_from_isr(aci_queue_t *aci_q)
 {
   ble_assert(NULL != aci_q);
 
   return (aci_q->tail == aci_q->head + ACI_QUEUE_SIZE);
 }
+*/
 
 bool aci_queue_peek(aci_queue_t *aci_q, hal_aci_data_t *p_data)
 {
@@ -175,6 +196,7 @@ bool aci_queue_peek(aci_queue_t *aci_q, hal_aci_data_t *p_data)
   return true;
 }
 
+/*
 bool aci_queue_peek_from_isr(aci_queue_t *aci_q, hal_aci_data_t *p_data)
 {
   ble_assert(NULL != aci_q);
@@ -189,3 +211,4 @@ bool aci_queue_peek_from_isr(aci_queue_t *aci_q, hal_aci_data_t *p_data)
 
   return true;
 }
+*/

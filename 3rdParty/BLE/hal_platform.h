@@ -68,12 +68,12 @@
 	
 	//Redefine the function for reading from flash in ChipKit
 	#define memcpy_P        memcpy
-#elif defined(__STM32__)
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
-#include <stdio.h>
 #endif
 
+#ifdef __STM32__
+#include <stdbool.h>
+#include <stdlib.h>
+#include <stdint.h>
+#endif
 
 #endif /* PLATFORM_H__ */

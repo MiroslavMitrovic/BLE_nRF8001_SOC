@@ -41,6 +41,7 @@ int __io_putchar(int ch)
  Write a character to a file. `libc' subroutines will use this system routine for output to all files, including stdout
  Returns -1 on error or number of bytes sent
  */
+#ifndef __PRINTF_OVER_UART__
 int _write(int file, char *ptr, int len) {
     int n;
 
@@ -50,7 +51,7 @@ int _write(int file, char *ptr, int len) {
 
     return len;
 }
-
+#endif
 #if defined(__PRINTF_OVER_UART__)
 #include  <errno.h>
 #include  <sys/unistd.h> // STDOUT_FILENO, STDERR_FILENO

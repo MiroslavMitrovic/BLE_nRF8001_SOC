@@ -37,7 +37,9 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
+_s_RAM_STACK = ORIGIN(RAM_STACK);
+_e_RAM_STACK = ORIGIN(RAM_STACK) + LENGTH(RAM_STACK);
+_estack = ORIGIN(RAM_STACK) + LENGTH(RAM_STACK); /* end of "RAM" Ram type memory */
 
 _Min_Heap_Size = 0x200; /* required amount of heap */
 _Min_Stack_Size = 0x400; /* required amount of stack */
@@ -46,13 +48,22 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 MEMORY
 {
   CCMRAM    (xrw)    : ORIGIN = 0x10000000,   LENGTH = 64K
-  RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 128K
-  FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 1024K
+  RAM    	(xrw)    : ORIGIN = 0x20000000,   LENGTH = 88K
+  RAM_STACK (xrw)    : ORIGIN = 0x20016300,   LENGTH = 31K
+  RAM2    	(xrw)    : ORIGIN = 0x2001E000,   LENGTH = 8K
+  FLASH    	(rx)    : ORIGIN = 0x8000000,   LENGTH = 1024K
 }
 
+_sram2 = ORIGIN(RAM2);
+_eram2 = ORIGIN(RAM2) + LENGTH(RAM2);
 /* Sections */
 SECTIONS
 {
+
+  .dataRam :
+ {
+	*(.dataRam)
+ } >RAM2
   /* The startup code into "FLASH" Rom type memory */
   .isr_vector :
   {
@@ -192,7 +203,7 @@ SECTIONS
     . = . + _Min_Heap_Size;
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
-  } >RAM
+  } >RAM_STACK
 
   /* Remove information from the compiler libraries */
   /DISCARD/ :

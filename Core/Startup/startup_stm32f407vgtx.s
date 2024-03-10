@@ -45,6 +45,11 @@ defined in linker script */
 .word  _ebss
 /* stack used for SystemInit_ExtMemCtl; always internal RAM used */
 
+.word _sram2
+.word _eram2
+
+.word _s_RAM_STACK
+.word _e_RAM_STACK
 /**
  * @brief  This is the code that gets called when the processor first
  *          starts execution following a reset event. Only the absolutely
@@ -90,6 +95,36 @@ FillZerobss:
 LoopFillZerobss:
   cmp r2, r4
   bcc FillZerobss
+
+
+/* Zero fill the Ram2 segment. */
+  ldr r2, =_sram2
+  ldr r4, =_eram2
+  movs r3, #0
+  b LoopFillZeroRam2
+/* Zero fill the Ram2 segment. */
+FillZeroRam2:
+  str  r3, [r2]
+  adds r2, r2, #4
+
+LoopFillZeroRam2:
+  cmp r2, r4
+  bcc FillZeroRam2
+
+/* Zero fill the RAM_STACK segment. */
+  ldr r2, =_s_RAM_STACK
+  ldr r4, =_e_RAM_STACK
+  movs r3, #0
+  b LoopFillZeroRAM_STACK
+/* Zero fill the RAM_STACK segment. */
+FillZeroRAM_STACK:
+  str  r3, [r2]
+  adds r2, r2, #4
+
+LoopFillZeroRAM_STACK:
+  cmp r2, r4
+  bcc FillZeroRAM_STACK
+
 
 /* Call the clock system initialization function.*/
   bl  SystemInit   

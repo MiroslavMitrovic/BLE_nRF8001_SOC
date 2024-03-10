@@ -10,10 +10,8 @@
 
 void __ble_assert(const char *file, uint16_t line);
 void delay(uint16_t delay);
-uint8_t digitalRead(uint8_t pin);
-uint8_t digitalWrite(uint8_t pin, uint8_t value);
-void pinMode(uint8_t pin, uint8_t mode);
-void detachInterrupt(uint8_t	interrupt_number);
-void	attachInterrupt(uint8_t	interrupt_number, void *fp_m_aci_isr, uint8_t pinStatus);
+uint8_t digitalRead(uint32_t pin);
+uint8_t digitalWrite(uint16_t pin, uint8_t value);
+void pinMode(uint16_t pin, uint8_t mode);
 
 #endif
